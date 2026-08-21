@@ -1,3 +1,14 @@
 # NAME: Git Ignore
 # PATH: /.gitignore
 
+**/.terraform/*
+
+*.tfstate
+*.tfstate.*
+
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+.terraformrc
+terraform.rc
