@@ -28,6 +28,14 @@ output "instance_nsg_id" {
   value       = oci_core_network_security_group.instance.id
 }
 
+output "instance_published_ports" {
+  description = "Ports open to the instance through its NSG, as \"protocol/port from source\""
+  value = sort([
+    for rule in local.published_port_rules :
+    "${rule.protocol == local.protocol_udp ? "udp" : "tcp"}/${rule.port_min}${rule.port_max != rule.port_min ? "-${rule.port_max}" : ""} from ${rule.source}"
+  ])
+}
+
 output "instance_private_ip" {
   description = "Private IP address of the instance in the public subnet"
   value       = oci_core_instance.free.private_ip

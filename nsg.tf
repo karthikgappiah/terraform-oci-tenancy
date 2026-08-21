@@ -78,3 +78,39 @@ resource "oci_core_network_security_group_security_rule" "instance_egress_all" {
   destination_type          = "CIDR_BLOCK"
   description               = "All outbound traffic."
 }
+
+# Workload ports, one rule per (service, source CIDR) pair from published_ports.
+# Opening a port is a single map entry, which keeps the reviewable unit of change
+# the same size as the decision being made.
+resource "oci_core_network_security_group_security_rule" "published" {
+  for_each = local.published_port_rules
+
+  network_security_group_id = oci_core_network_security_group.instance.id
+  direction                 = "INGRESS"
+  protocol                  = each.value.protocol
+  source                    = each.value.source
+  source_type               = "CIDR_BLOCK"
+  description               = each.value.description
+
+  dynamic "tcp_options" {
+    for_each = each.value.protocol == local.protocol_tcp ? [1] : []
+
+    content {
+      destination_port_range {
+        min = each.value.port_min
+        max = each.value.port_max
+      }
+    }
+  }
+
+  dynamic "udp_options" {
+    for_each = each.value.protocol == local.protocol_udp ? [1] : []
+
+    content {
+      destination_port_range {
+        min = each.value.port_min
+        max = each.value.port_max
+      }
+    }
+  }
+}

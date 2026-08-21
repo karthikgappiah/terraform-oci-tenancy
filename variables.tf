@@ -59,6 +59,51 @@ variable "public_subnet_cidr_block" {
   }
 }
 
+variable "published_ports" {
+  description = "Ports opened to the instance through its NSG, keyed by service name. Each entry opens one port (or a port range, with port_max) over TCP or UDP to the listed source CIDR blocks. Empty by default: nothing inbound is open until an entry is added."
+  type = map(object({
+    protocol     = string
+    port         = number
+    port_max     = optional(number)
+    source_cidrs = list(string)
+    description  = optional(string)
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue([for service in var.published_ports : contains(["tcp", "udp"], service.protocol)])
+    error_message = "Each published port must set protocol to \"tcp\" or \"udp\"."
+  }
+
+  validation {
+    condition = alltrue([
+      for service in var.published_ports :
+      service.port >= 1 && service.port <= 65535 &&
+      coalesce(service.port_max, service.port) >= service.port &&
+      coalesce(service.port_max, service.port) <= 65535
+    ])
+    error_message = "Ports must be between 1 and 65535, and port_max must not be below port."
+  }
+
+  validation {
+    condition = alltrue([
+      for service in var.published_ports :
+      length(service.source_cidrs) > 0 && alltrue([for cidr in service.source_cidrs : can(cidrhost(cidr, 0))])
+    ])
+    error_message = "Each published port must list at least one source CIDR block, in valid IPv4 CIDR notation."
+  }
+
+  # Without this, an entry spanning port 22 would reopen SSH and skip the
+  # 0.0.0.0/0 rejection that ssh_ingress_cidr_blocks enforces.
+  validation {
+    condition = alltrue([
+      for service in var.published_ports :
+      !(service.protocol == "tcp" && service.port <= 22 && coalesce(service.port_max, service.port) >= 22)
+    ])
+    error_message = "Port 22 cannot be opened through published_ports. Use ssh_ingress_cidr_blocks, which rejects 0.0.0.0/0."
+  }
+}
+
 variable "region" {
   description = "OCI region to target, e.g. us-ashburn-1."
   type        = string

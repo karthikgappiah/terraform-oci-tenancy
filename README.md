@@ -21,8 +21,8 @@ Ingress is enforced per-VNIC by a network security group, not by the subnet:
 
 - **Instance NSG** ([nsg.tf](nsg.tf)) — the only thing that admits traffic to the
   host. ICMP type 3 code 4 from `0.0.0.0/0` and ICMP type 3 from the VCN for path
-  MTU discovery, plus port 22 from `ssh_ingress_cidr_blocks`. Egress is
-  unrestricted. No service ports are open; add them here as workloads need them.
+  MTU discovery, port 22 from `ssh_ingress_cidr_blocks`, and whatever
+  `published_ports` opens. Egress is unrestricted.
 - **Public subnet** — the VCN's default security list, with no ingress rules at
   all and unrestricted egress. Security lists and NSGs are unioned by OCI, so a
   rule left on the subnet would apply to every VNIC in it. Keeping it empty makes
@@ -42,6 +42,43 @@ An NSG is also the only firewall Docker cannot route around. Publishing a
 container port writes DNAT rules into iptables ahead of the chains `ufw` and
 `firewalld` manage, so a published port can be reachable from the internet even
 when the host firewall is configured to refuse it.
+
+### Opening a Port
+
+`published_ports` is empty by default, so nothing inbound is open. Each entry
+opens one port, or a range with `port_max`, over TCP or UDP to the listed source
+CIDR blocks:
+
+```hcl
+published_ports = {
+  https = {
+    protocol     = "tcp"
+    port         = 443
+    source_cidrs = ["0.0.0.0/0"]
+    description  = "HTTPS from the internet."
+  }
+
+  internal_api = {
+    protocol     = "tcp"
+    port         = 8080
+    port_max     = 8090
+    source_cidrs = ["10.0.0.0/24"]
+  }
+}
+```
+
+An NSG rule carries exactly one source, so an entry becomes one rule per source
+CIDR block. `terraform output instance_published_ports` lists what is open.
+
+Adding a port is one map entry, which keeps the reviewable unit of change the
+same size as the decision being made. The variable rejects, at plan time:
+
+| Rejected | Reason |
+|:---------|:-------|
+| A protocol other than `tcp` or `udp` | Ranges are meaningless for the rest, and ICMP is already handled |
+| Ports outside 1–65535, or `port_max` below `port` | Malformed range |
+| An empty or malformed `source_cidrs` | A rule with no valid source silently opens nothing, or everything |
+| Any entry covering port 22 | Otherwise a range spanning 22 would reopen SSH and skip the `0.0.0.0/0` rejection on `ssh_ingress_cidr_blocks` |
 
 ## Compute Instance
 

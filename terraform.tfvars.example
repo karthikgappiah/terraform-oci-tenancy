@@ -25,3 +25,23 @@ ssh_public_key_path = "~/.ssh/id_ed25519.pub"
 # then reachable only through an Instance Console Connection. List the specific
 # administrator networks that need access. 0.0.0.0/0 is rejected by validation.
 # ssh_ingress_cidr_blocks = ["203.0.113.4/32"]
+
+# Inbound service ports. Empty by default, so nothing is open. Each entry opens
+# one port (or a range, with port_max) over TCP or UDP to the listed sources, and
+# becomes one NSG rule per source CIDR block. Port 22 is rejected here; it belongs
+# to ssh_ingress_cidr_blocks above.
+# published_ports = {
+#   https = {
+#     protocol     = "tcp"
+#     port         = 443
+#     source_cidrs = ["0.0.0.0/0"]
+#     description  = "HTTPS from the internet."
+#   }
+#
+#   internal_api = {
+#     protocol     = "tcp"
+#     port         = 8080
+#     port_max     = 8090
+#     source_cidrs = ["10.0.0.0/24"]
+#   }
+# }
