@@ -1,0 +1,26 @@
+# Backend configuration for the OCI Object Storage remote state store.
+#
+#   terraform init -backend-config=backend.hcl
+#
+# The backend block in terraform.tf is intentionally empty. A backend cannot
+# reference variables or locals, so every value here has to be a literal --
+# which is exactly why they live in this gitignored file rather than in
+# terraform.tf, the same arrangement terraform.tfvars has. Terraform caches
+# this in .terraform/ after the first init, so later inits do not need the flag
+# unless the backend settings themselves change.
+
+# Created by state.tf, in the tenancy root compartment.
+# `terraform output objectstorage_namespace` prints the namespace.
+bucket    = "terraform-state"
+namespace = "xxxxxxxxxxxx"
+region    = "us-ashburn-1"
+
+# One state object per project, so this bucket can serve more than this repo.
+key = "terraform-oci-tenancy/terraform.tfstate"
+
+# Credentials come from the DEFAULT profile in ~/.oci/config rather than being
+# repeated here, so no API key material sits in the repository directory at all.
+# That profile needs a pass_phrase entry: the signing key is encrypted, and the
+# backend has no other way to unlock it.
+auth                = "APIKey"
+config_file_profile = "DEFAULT"

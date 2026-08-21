@@ -135,6 +135,17 @@ variable "ssh_public_key_path" {
   }
 }
 
+variable "state_bucket_name" {
+  description = "Name of the Object Storage bucket holding Terraform remote state. Created in the tenancy root compartment, not in the free compartment, so it outlives whatever the configuration manages."
+  type        = string
+  default     = "terraform-state"
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9][a-zA-Z0-9._-]{0,255}$", var.state_bucket_name))
+    error_message = "Bucket name must start with a letter or digit and contain only letters, digits, hyphens, underscores, and periods (max 256 characters)."
+  }
+}
+
 variable "tenancy_ocid" {
   description = "OCID of the OCI tenancy."
   type        = string

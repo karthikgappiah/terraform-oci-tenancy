@@ -10,5 +10,8 @@
 *.tfvars.json
 !*.tfvars.example
 
+backend.hcl
+!backend.hcl.example
+
 .terraformrc
 terraform.rc

@@ -66,6 +66,11 @@ output "nat_gateway_public_ip" {
   value       = oci_core_nat_gateway.main.nat_ip
 }
 
+output "objectstorage_namespace" {
+  description = "Object Storage namespace of this tenancy, needed by the remote state backend configuration"
+  value       = data.oci_objectstorage_namespace.this.namespace
+}
+
 output "oracle_services_network_cidr_block" {
   description = "Service CIDR label routed to the service gateway"
   value       = local.oracle_services_network.cidr_block
@@ -84,6 +89,11 @@ output "public_subnet_id" {
 output "service_gateway_id" {
   description = "OCID of the service gateway to the Oracle Services Network"
   value       = oci_core_service_gateway.main.id
+}
+
+output "state_bucket_name" {
+  description = "Object Storage bucket holding Terraform remote state"
+  value       = oci_objectstorage_bucket.terraform_state.name
 }
 
 output "tenancy_name" {
