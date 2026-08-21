@@ -1,3 +1,14 @@
+variable "availability_domain_number" {
+  description = "Which availability domain in the region to launch the instance in, numbered from 1. Ampere A1 capacity varies between domains, so try another number if a launch reports out-of-capacity."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.availability_domain_number >= 1 && var.availability_domain_number == floor(var.availability_domain_number)
+    error_message = "Availability domain number must be a whole number of 1 or greater."
+  }
+}
+
 variable "fingerprint" {
   description = "Fingerprint of the API signing key uploaded for the OCI user."
   type        = string
@@ -51,6 +62,16 @@ variable "public_subnet_cidr_block" {
 variable "region" {
   description = "OCI region to target, e.g. us-ashburn-1."
   type        = string
+}
+
+variable "ssh_public_key_path" {
+  description = "Path to the SSH public key authorized for the ubuntu user on the instance, e.g. ~/.ssh/id_ed25519.pub."
+  type        = string
+
+  validation {
+    condition     = can(regex("^(ssh-(rsa|ed25519)|ecdsa-sha2-nistp[0-9]+) ", trimspace(file(pathexpand(var.ssh_public_key_path)))))
+    error_message = "SSH public key file must contain an OpenSSH public key (ssh-ed25519, ssh-rsa, or ecdsa-sha2-*). Point this at the .pub file, not the private key."
+  }
 }
 
 variable "tenancy_ocid" {

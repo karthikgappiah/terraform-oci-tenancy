@@ -3,6 +3,41 @@ output "free_compartment_id" {
   value       = oci_identity_compartment.free.id
 }
 
+output "instance_availability_domain" {
+  description = "Availability domain the instance was placed in"
+  value       = oci_core_instance.free.availability_domain
+}
+
+output "instance_boot_volume_size_in_gbs" {
+  description = "Boot volume size, which consumes the entire 200 GB Always Free block volume allowance"
+  value       = oci_core_instance.free.source_details[0].boot_volume_size_in_gbs
+}
+
+output "instance_id" {
+  description = "OCID of the always-free compute instance"
+  value       = oci_core_instance.free.id
+}
+
+output "instance_image_name" {
+  description = "Display name of the Ubuntu image the instance was launched from"
+  value       = data.oci_core_images.ubuntu_minimal.images[0].display_name
+}
+
+output "instance_private_ip" {
+  description = "Private IP address of the instance in the public subnet"
+  value       = oci_core_instance.free.private_ip
+}
+
+output "instance_public_ip" {
+  description = "Ephemeral public IP address of the instance"
+  value       = oci_core_instance.free.public_ip
+}
+
+output "instance_ssh_command" {
+  description = "Command to connect to the instance as the default ubuntu user"
+  value       = "ssh ubuntu@${oci_core_instance.free.public_ip}"
+}
+
 output "internet_gateway_id" {
   description = "OCID of the internet gateway used by the public subnet"
   value       = oci_core_internet_gateway.main.id
