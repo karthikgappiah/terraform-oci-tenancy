@@ -23,6 +23,11 @@ output "instance_image_name" {
   value       = data.oci_core_images.ubuntu_minimal.images[0].display_name
 }
 
+output "instance_nsg_id" {
+  description = "OCID of the network security group enforcing the instance's ingress rules"
+  value       = oci_core_network_security_group.instance.id
+}
+
 output "instance_private_ip" {
   description = "Private IP address of the instance in the public subnet"
   value       = oci_core_instance.free.private_ip

@@ -17,18 +17,31 @@ This repository contains tenancy-level infrastructure:
 | NAT gateway                    | Outbound-only internet path for the private subnet                  |
 | Service gateway                | Private path from the private subnet to the Oracle Services Network |
 
-Traffic rules — OCI's default security list rule set on both subnets:
+Ingress is enforced per-VNIC by a network security group, not by the subnet:
 
-- **Public subnet** — ingress on 22 from `0.0.0.0/0`, ICMP type 3 code 4 from
-  `0.0.0.0/0`, ICMP type 3 from the VCN CIDR block. Egress is unrestricted.
-- **Private subnet** — the same three rules, except SSH is scoped to the VCN CIDR
-  block rather than the internet. Egress is unrestricted.
+- **Instance NSG** ([nsg.tf](nsg.tf)) — the only thing that admits traffic to the
+  host. ICMP type 3 code 4 from `0.0.0.0/0` and ICMP type 3 from the VCN for path
+  MTU discovery, plus port 22 from `ssh_ingress_cidr_blocks`. Egress is
+  unrestricted. No service ports are open; add them here as workloads need them.
+- **Public subnet** — the VCN's default security list, with no ingress rules at
+  all and unrestricted egress. Security lists and NSGs are unioned by OCI, so a
+  rule left on the subnet would apply to every VNIC in it. Keeping it empty makes
+  the NSG the single ingress control and leaves anything else placed in the
+  subnet default-deny.
+- **Private subnet** — its own security list: SSH from the VCN CIDR block, the two
+  ICMP rules, unrestricted egress. Currently unused.
 - Routing: the public subnet defaults to the internet gateway; the private subnet
   defaults to the NAT gateway, with a more specific Oracle Services Network route
   through the service gateway.
 
-The VCN's default route table and default security list are left as OCI creates
-them. Nothing in this configuration attaches to them.
+The public subnet uses the VCN's default route table and default security list,
+as the VCN wizard arranges it. The wizard's rule set is not kept: it opens SSH to
+`0.0.0.0/0`.
+
+An NSG is also the only firewall Docker cannot route around. Publishing a
+container port writes DNAT rules into iptables ahead of the chains `ufw` and
+`firewalld` manage, so a published port can be reachable from the internet even
+when the host firewall is configured to refuse it.
 
 ## Compute Instance
 
@@ -69,8 +82,19 @@ Ampere A1 capacity is often exhausted in a given availability domain. A launch
 that fails with "Out of host capacity" is a capacity problem, not a
 configuration one: set `availability_domain_number` to 2 or 3 and retry.
 
-Connect with `ssh ubuntu@$(terraform output -raw instance_public_ip)`. Port 22 is
-open to `0.0.0.0/0` because the security lists are the VCN wizard's defaults.
+**Inbound SSH is closed by default.** `ssh_ingress_cidr_blocks` is empty, so the
+NSG admits nothing on port 22 and
+`ssh ubuntu@$(terraform output -raw instance_public_ip)` will time out. Set the
+variable to the administrator networks that need access:
+
+```hcl
+ssh_ingress_cidr_blocks = ["203.0.113.4/32"]
+```
+
+`0.0.0.0/0` is rejected by validation. With the list empty, reach the instance
+through an Instance Console Connection instead. The OCI Bastion service is not an
+option here: its managed SSH sessions target instances in private subnets, and
+this instance is in the public one.
 
 ## Local Development
 

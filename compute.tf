@@ -55,6 +55,7 @@ resource "oci_core_instance" "free" {
     subnet_id                 = oci_core_subnet.public.id
     display_name              = "${var.name_prefix}-instance-vnic"
     hostname_label            = var.name_prefix
+    nsg_ids                   = [oci_core_network_security_group.instance.id]
     assign_public_ip          = true
     assign_private_dns_record = true
     freeform_tags             = local.freeform_tags

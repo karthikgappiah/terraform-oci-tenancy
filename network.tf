@@ -78,53 +78,15 @@ resource "oci_core_route_table" "private" {
   }
 }
 
-# Likewise, the public subnet uses the VCN's default security list. Both lists
-# carry OCI's default rule set: SSH, the two ICMP rules, and allow-all egress.
-# The only difference is the SSH source, scoped to the VCN on the private list.
+# The public subnet keeps using the VCN's default security list, as the wizard
+# arranges it, but not the wizard's rule set: that opens SSH to 0.0.0.0/0. Ingress
+# is empty here instead, so the subnet is default-deny and every rule that admits
+# traffic to the instance lives in its NSG (see nsg.tf). Security lists and NSGs
+# are unioned, so a rule left here would apply to everything in the subnet,
+# including a future VNIC meant to carry a narrower NSG of its own.
 resource "oci_core_default_security_list" "main" {
   manage_default_resource_id = oci_core_vcn.main.default_security_list_id
   freeform_tags              = local.freeform_tags
-
-  ingress_security_rules {
-    description = "SSH from the internet."
-    protocol    = local.protocol_tcp
-    source      = local.anywhere_cidr
-    source_type = "CIDR_BLOCK"
-
-    tcp_options {
-      min = 22
-      max = 22
-    }
-  }
-
-  # Path MTU discovery. Without this, large packets from the internet are dropped
-  # silently instead of triggering a fragmentation-needed response.
-  ingress_security_rules {
-    description = "ICMP fragmentation needed, for path MTU discovery."
-    protocol    = local.protocol_icmp
-    source      = local.anywhere_cidr
-    source_type = "CIDR_BLOCK"
-
-    icmp_options {
-      type = 3
-      code = 4
-    }
-  }
-
-  dynamic "ingress_security_rules" {
-    for_each = toset(var.vcn_cidr_blocks)
-
-    content {
-      description = "ICMP destination unreachable from within the VCN."
-      protocol    = local.protocol_icmp
-      source      = ingress_security_rules.value
-      source_type = "CIDR_BLOCK"
-
-      icmp_options {
-        type = 3
-      }
-    }
-  }
 
   egress_security_rules {
     description      = "All outbound traffic."

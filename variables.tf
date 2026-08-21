@@ -64,6 +64,22 @@ variable "region" {
   type        = string
 }
 
+variable "ssh_ingress_cidr_blocks" {
+  description = "Source CIDR blocks allowed to reach port 22 on the instance. Empty by default, which leaves no inbound SSH; use an Instance Console Connection when this is empty."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for cidr in var.ssh_ingress_cidr_blocks : can(cidrhost(cidr, 0))])
+    error_message = "Every SSH ingress entry must be valid IPv4 CIDR notation."
+  }
+
+  validation {
+    condition     = !contains(var.ssh_ingress_cidr_blocks, "0.0.0.0/0")
+    error_message = "SSH must not be open to 0.0.0.0/0. List the specific administrator networks that need it."
+  }
+}
+
 variable "ssh_public_key_path" {
   description = "Path to the SSH public key authorized for the ubuntu user on the instance, e.g. ~/.ssh/id_ed25519.pub."
   type        = string
