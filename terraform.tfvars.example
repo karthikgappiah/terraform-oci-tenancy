@@ -1,4 +1,10 @@
-# Authentication (required).
+# Copy to terraform.tfvars and fill in. Both are gitignored.
+#
+# These values configure the *provider*. The remote state *backend* is configured
+# separately in backend.hcl, because a backend block cannot reference variables.
+# See README.md, "Remote State".
+
+# --- Authentication (required) ---------------------------------------------
 tenancy_ocid         = "ocid1.tenancy.oc1..aaaaaaaa..."
 user_ocid            = "ocid1.user.oc1..aaaaaaaa..."
 fingerprint          = "xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
@@ -6,42 +12,148 @@ private_key_path     = "~/.oci/oci_api_key.pem"
 private_key_password = "changeme"
 region               = "us-ashburn-1"
 
-# Compute (required). Path to the SSH public key authorized on the instance.
+# --- Compute (required) -----------------------------------------------------
+# Path to the SSH *public* key authorized for the ubuntu user on the instance.
 ssh_public_key_path = "~/.ssh/id_ed25519.pub"
 
 # Ampere A1 capacity varies by availability domain. If a launch reports
 # "Out of host capacity", try 2 or 3 rather than changing the shape.
 # availability_domain_number = 1
 
-# Networking (optional, defaults shown). These match the values the OCI
-# "VCN with Internet Connectivity" wizard prefills.
+# --- Networking (optional, defaults shown) ----------------------------------
+# These match the values the OCI "VCN with Internet Connectivity" wizard
+# prefills.
 # name_prefix               = "free"
 # vcn_cidr_blocks           = ["10.0.0.0/16"]
-# vcn_dns_label             = "free"
+# vcn_dns_label             = "freevcn"
 # public_subnet_cidr_block  = "10.0.0.0/24"
 # private_subnet_cidr_block = "10.0.1.0/24"
 
-# Inbound SSH. Empty by default, which admits nothing on port 22; the instance is
-# then reachable only through an Instance Console Connection. List the specific
-# administrator networks that need access. 0.0.0.0/0 is rejected by validation.
-# ssh_ingress_cidr_blocks = ["203.0.113.4/32"]
+# --- Remote state (optional, default shown) ---------------------------------
+# The bucket state.tf creates in the tenancy root. The name here and the
+# `bucket` line in backend.hcl must agree.
+# state_bucket_name = "terraform-state"
 
-# Inbound service ports. Empty by default, so nothing is open. Each entry opens
-# one port (or a range, with port_max) over TCP or UDP to the listed sources, and
-# becomes one NSG rule per source CIDR block. Port 22 is rejected here; it belongs
-# to ssh_ingress_cidr_blocks above.
-# published_ports = {
-#   https = {
-#     protocol     = "tcp"
-#     port         = 443
-#     source_cidrs = ["0.0.0.0/0"]
-#     description  = "HTTPS from the internet."
-#   }
+# --- Inbound SSH ------------------------------------------------------------
+# Empty by default, which admits nothing on port 22; the instance is then
+# reachable only through an Instance Console Connection. List the specific
+# administrator networks that need access. 0.0.0.0/0 is rejected by validation.
 #
-#   internal_api = {
-#     protocol     = "tcp"
-#     port         = 8080
-#     port_max     = 8090
-#     source_cidrs = ["10.0.0.0/24"]
-#   }
-# }
+# A residential address is a lease, not an identity. When the ISP rotates it,
+# this rule starts admitting whoever received it next, so re-check it
+# periodically -- or install Tailscale (below) and empty this list entirely.
+ssh_ingress_cidr_blocks = ["203.0.113.4/32"]
+
+# --- Inbound service ports --------------------------------------------------
+# Empty by default, so nothing is open. Each entry opens one port (or a range,
+# with port_max) over TCP or UDP to the listed sources, and becomes one NSG rule
+# per source CIDR block. Port 22 is rejected here; it belongs to
+# ssh_ingress_cidr_blocks above.
+#
+# What follows is the set for the four workloads this box is built around --
+# Dokploy, Tailscale, Minecraft, and Hermes. Three of the four need nothing
+# beyond 80 and 443; the comment blocks explain why, because "no rule" is a
+# decision that should not look like an oversight.
+published_ports = {
+  # --- Dokploy ------------------------------------------------------------
+  # Dokploy runs Traefik as its ingress. Everything it hosts -- its own
+  # dashboard included -- reaches the internet through these two ports, routed
+  # by Host header. A request to the raw public IP matches no router and gets a
+  # 404; that is Traefik answering, not a fault.
+  http = {
+    protocol     = "tcp"
+    port         = 80
+    source_cidrs = ["0.0.0.0/0"]
+    description  = "HTTP. Traefik redirects to HTTPS and answers ACME HTTP-01 challenges."
+  }
+
+  https = {
+    protocol     = "tcp"
+    port         = 443
+    source_cidrs = ["0.0.0.0/0"]
+    description  = "HTTPS. Traefik terminates TLS and routes to application containers."
+  }
+
+  # Traefik publishes 443 on udp as well as tcp (-p 443:443/udp in the
+  # installer), which is HTTP/3 over QUIC. Without this rule Traefik still
+  # advertises HTTP/3 in its Alt-Svc header, so clients attempt QUIC, get
+  # nothing back, and fall back to TCP -- working, but a wasted round trip on
+  # every first connection. Protocol is part of the rule, so this is a separate
+  # entry rather than a second protocol on the one above.
+  https_quic = {
+    protocol     = "udp"
+    port         = 443
+    source_cidrs = ["0.0.0.0/0"]
+    description  = "HTTP/3 over QUIC. Traefik publishes 443/udp alongside 443/tcp."
+  }
+
+  # The Dokploy dashboard on 3000/tcp is a *bootstrap* rule with a short life.
+  # A fresh install has no account yet and does not ask for one, so whoever
+  # reaches port 3000 first owns the server: never 0.0.0.0/0, only the address
+  # you are sitting at.
+  #
+  # Once you have created the first account and given Dokploy a domain of its
+  # own, delete this entry. It then serves the same dashboard over plain HTTP --
+  # session cookies and passwords in cleartext -- to whatever address the
+  # allowlist has aged into. The dashboard stays reachable without it, because
+  # Docker still binds 3000 on the host (Dokploy publishes it with mode=host):
+  #
+  #   ssh -L 3000:localhost:3000 ubuntu@<public-ip>   # then http://localhost:3000
+  #
+  # Test that tunnel *before* removing the rule, so a broken certificate on the
+  # domain is an inconvenience rather than a lockout.
+  dokploy_dashboard = {
+    protocol     = "tcp"
+    port         = 3000
+    source_cidrs = ["203.0.113.4/32"]
+    description  = "Dokploy dashboard, until it has a domain. Remove after that."
+  }
+
+  # --- Tailscale ----------------------------------------------------------
+  # No entry. Tailscale is outbound-only: the node dials the coordination
+  # server over 443/tcp, negotiates direct peer connections by UDP hole
+  # punching, and falls back to DERP relays over 443 when a NAT defeats that.
+  # NSG rules are stateful, so replies arrive on flows the host itself opened.
+  #
+  # Admitting 41641/udp from 0.0.0.0/0 can improve the odds of a *direct* peer
+  # connection rather than a relayed one, but this instance has a public IP and
+  # hole punching from behind an OCI NSG generally succeeds without it. Add it
+  # only if `tailscale status` shows peers stuck on "relay".
+  #
+  # Once the tailnet survives a reboot, the useful change is the opposite of
+  # opening a port: empty ssh_ingress_cidr_blocks above, delete the
+  # dokploy_dashboard entry, and reach both over the tailnet instead.
+
+  # --- Minecraft ----------------------------------------------------------
+  # Uncomment the edition you run. Minecraft is not HTTP, so Traefik cannot
+  # route it the way it routes the web apps: the container publishes the port on
+  # the host directly (Dokploy's Advanced -> Ports, not a domain entry), and the
+  # rule below is what lets the internet reach it.
+  #
+  # RCON (25575/tcp) is deliberately absent and should stay that way. It
+  # authenticates with a plaintext password over an unencrypted socket. Bind it
+  # to 127.0.0.1 in the container's port mapping and reach it over SSH.
+  # minecraft_java = {
+  #   protocol     = "tcp"
+  #   port         = 25565
+  #   source_cidrs = ["0.0.0.0/0"]
+  #   description  = "Minecraft Java Edition."
+  # }
+  #
+  # minecraft_bedrock = {
+  #   protocol     = "udp"
+  #   port         = 19132
+  #   source_cidrs = ["0.0.0.0/0"]
+  #   description  = "Minecraft Bedrock Edition."
+  # }
+
+  # --- Hermes (Nous Research) ---------------------------------------------
+  # No entry, deliberately. Its dashboard binds to 127.0.0.1 and its messaging
+  # integrations are outbound, so nothing needs to reach it from the internet;
+  # reach the dashboard over an SSH tunnel. It runs with network_mode: host,
+  # which means anything it binds to 0.0.0.0 lands on the host's own network
+  # stack -- setting API_SERVER_HOST=0.0.0.0 would expose the API to everything
+  # this NSG admits. Leave it on localhost. If a webhook ever needs inbound, it
+  # is HTTP: give it a domain through Traefik on 443 rather than a port of its
+  # own.
+}
